@@ -1,5 +1,9 @@
 version: '3.7'
 
+networks: 
+  mini:
+    external: false
+
 services:
   # 排序服务
   orderer.example.com:
@@ -18,6 +22,8 @@ services:
       - ORDERER_GENERAL_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
     working_dir: /opt/gopath/src/github.com/hyperledger/fabric
     command: orderer
+    networks: 
+      - mini
     volumes:
       - ./channel-artifacts/genesis.block:/var/hyperledger/orderer/orderer.genesis.block
       - ./crypto-config/ordererOrganizations/example.com/orderers/orderer.example.com/msp:/var/hyperledger/orderer/msp
@@ -28,6 +34,8 @@ services:
   # peer 节点
   peer0.org1.example.com:
     image: hyperledger/fabric-peer:1.4.3
+    networks: 
+      - mini
     environment:
       - CORE_PEER_ID=peer0.org1.example.com
       - CORE_PEER_ADDRESS=peer0.org1.example.com:7051
@@ -40,7 +48,7 @@ services:
       # the following setting starts chaincode containers on the same
       # bridge network as the peers
       # https://docs.docker.com/compose/networking/
-      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=singlepeer_default
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=01_mini_mini
       #- FABRIC_LOGGING_SPEC=ERROR
       - FABRIC_LOGGING_SPEC=INFO
       - CORE_PEER_TLS_ENABLED=false
@@ -64,6 +72,8 @@ services:
   # 命令行工具
   cli:
     image: hyperledger/fabric-tools:1.4.3
+    networks: 
+      - mini
     tty: true
     environment:
       - GOPATH=/opt/gopath
@@ -86,55 +96,11 @@ services:
     depends_on:
       - orderer.example.com
       - peer0.org1.example.com
-
-  install-chain-code:
-    image: hyperledger/fabric-tools:1.4.3
-    tty: true
-    environment:
-      - GOPATH=/opt/gopath
-      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
-      - FABRIC_LOGGING_SPEC=DEBUG
-      - CORE_PEER_ID=cli
-      - CORE_PEER_ADDRESS=peer0.org1.example.com:7051
-      - CORE_PEER_LOCALMSPID=Org1MSP
-      - CORE_PEER_TLS_ENABLED=false
-      - CORE_PEER_TLS_CERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/server.crt
-      - CORE_PEER_TLS_KEY_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/server.key
-      - CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
-      - CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp
-    working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
-    volumes:
-        - /var/run/:/host/var/run/
-        - ./chaincode/go/:/opt/gopath/src/github.com/hyperledger/fabric/singlepeer/chaincode/go
-        - ./crypto-config:/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/
-        - ./channel-artifacts:/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts
-    depends_on:
-      - orderer.example.com
-      - peer0.org1.example.com
-    command: 
-      - /bin/sh
-      - -c
-      - |
-        # 创建 channel
-        peer channel create -o orderer.example.com:7050 -c mychannel -f ./channel-artifacts/mychannel.tx;
-        # peer 加入 channel
-        peer channel join -b mychannel.block;
-        # 安装智能合约
-        peer chaincode install -n mycc -p github.com/hyperledger/fabric/singlepeer/chaincode/go/example02/cmd/ -v 1.0;
-        # 实例化智能合约
-        peer chaincode instantiate -o orderer.example.com:7050 -C mychannel -n mycc -v 1.0 -c '{"Args":["init","a","100","b","200"]}' -P "AND ('Org1MSP.peer')";
-        # query 查询 a
-        peer chaincode query -C mychannel -n mycc -c '{"Args":["query","a"]}';
-        # invoke 一笔 a 向 b 转 10 的交易
-        peer chaincode invoke -C mychannel -n mycc -c '{"Args":["invoke","a","b","10"]}';
-        # 在查一次 a 和 b
-        peer chaincode query -C mychannel -n mycc -c '{"Args":["query","a"]}';
-        peer chaincode query -C mychannel -n mycc -c '{"Args":["query","b"]}';
-        # 查看当前块号
-        peer channel getinfo -c mychannel;
 
   explorerdb:
     image: hyperledger/explorer-db:latest
+    networks: 
+      - mini
     hostname: explorerdb
     environment:
       - DATABASE_DATABASE=fabricexplorer
@@ -146,6 +112,8 @@ services:
 
   explorer:
     image: hyperledger/explorer:latest
+    networks: 
+      - mini
     hostname: explorer
     depends_on: 
     - explorerdb
@@ -158,25 +126,12 @@ services:
     volumes:
       - ./explorer/config.json:/opt/explorer/app/platform/fabric/config.json
       - ./explorer/connection-profile:/opt/explorer/app/platform/fabric/connection-profile
-      - ./crypto-config:/tmp/crypto
+      - ./crypto-config:/crypto
       - walletstore:/opt/wallet
     command: sh -c "sleep 16 && node /opt/explorer/main.js && tail -f /dev/null"
     ports:
       - 8080:8080
 
-  fabric-ca-server:
-    image: hyperledger/fabric-ca:x86_64-1.0.0-beta
-    container_name: fabric-ca-server
-    ports:
-      - "7054:7054"
-    environment:
-      - FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
-    volumes:
-      - "./fabric-ca-server:/etc/hyperledger/fabric-ca-server"
-    command: sh -c 'fabric-ca-server start -b admin:adminpw'
-
 volumes:
   pgdata:
   walletstore:
-  grafana-storage:
-  prometheus-storage:

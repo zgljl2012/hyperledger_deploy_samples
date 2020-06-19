@@ -10,23 +10,17 @@ make genesis
 
 make up
 
-make cli
-
 ```
 
-启动 explorer：
+## 创建 Channel, 部署合约
+
+进入 cli
 
 ```bash
 
-make install-chain-code
-
-# 需要修改 explorer/connection-profile/first-network.json 中的 admin user 的 keystore
-
-make dashboard
+make cli
 
 ```
-
-details of install-chain-code
 
 ```bash
 
@@ -55,4 +49,23 @@ peer chaincode query -C mychannel -n mycc -c '{"Args":["query","b"]}'
 # 查看当前块号
 peer channel getinfo -c mychannel
 
+exit
+
 ```
+
+## Explorer
+
+复制好 admin 的 key 路径后，启动 explorer：
+
+```bash
+
+# 需要修改 explorer/connection-profile/first-network.json 中的 admin user 的 keystore
+# 仅需修改：`adminPrivateKey.path` 这一项，修改为自己生成的文件名
+# admin keystore 位于：./crypto-config/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore/0ee4c7cb3a097b5b1ab58342615862f980a3f44b6dc79d491a4b1d0afbc0c9d6_sk
+
+# 仅需修改目录最后一层的文件名，`0ee4c7cb3a097b5b1ab58342615862f980a3f44b6dc79d491a4b1d0afbc0c9d6_sk`
+make explorer
+
+```
+
+启动后，访问：[localhost](http://127.0.0.1:8080)，用户名密码：`amdin`, `password`
